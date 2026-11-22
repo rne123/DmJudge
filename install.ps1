@@ -11,7 +11,7 @@ function Fail([string]$m) {
     Say "설치 실패: $m" 'Red'
     Say ''
     Say '이 창을 사진으로 찍어서 GitHub의 Issues에 올려 주시면 도와드릴게요.' 'Yellow'
-    Say '   https://github.com/nirne/DmJudge/issues' 'Yellow'
+    Say '   https://github.com/rne123/DmJudge/issues' 'Yellow'
     Read-Host '엔터를 누르면 창이 닫혀요'
     exit 1
 }

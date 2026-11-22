@@ -11,7 +11,7 @@
 
 <img src="images/2.png" width="850" alt="게임 옆에 분석기를 띄운 모습">
 
-### ⬇️ [여기를 눌러 다운로드 (DmJudge.zip)](https://github.com/nirne/DmJudge/archive/refs/heads/main.zip)
+### ⬇️ [여기를 눌러 다운로드 (DmJudge.zip)](https://github.com/rne123/DmJudge/archive/refs/heads/main.zip)
 받은 zip을 압축 풀고 **`INSTALL.bat`** 더블클릭 → 끝! (자세한 건 아래 "설치")
 
 ---
@@ -28,7 +28,7 @@
 
 ## 설치 (처음 한 번, 5~10분)
 
-1. **[여기를 눌러 다운로드](https://github.com/nirne/DmJudge/archive/refs/heads/main.zip)**
+1. **[여기를 눌러 다운로드](https://github.com/rne123/DmJudge/archive/refs/heads/main.zip)**
 2. 받은 zip 파일을 오른쪽 클릭 → **압축 풀기** → 원하는 곳(예: 바탕화면)에 풀기
 3. 풀린 폴더 안의 **`INSTALL.bat`** 더블클릭
    - 파란 창 "Windows의 PC 보호"가 뜨면 → **추가 정보** → **실행**
@@ -135,7 +135,7 @@
 
 ## 업데이트
 
-1. **[다운로드 링크](https://github.com/nirne/DmJudge/archive/refs/heads/main.zip)** 로 새로 받기
+1. **[다운로드 링크](https://github.com/rne123/DmJudge/archive/refs/heads/main.zip)** 로 새로 받기
 2. 압축을 푼 파일을 **원래 폴더에 덮어쓰기** (설정·기록은 그대로 남아요)
 3. **`INSTALL.bat`** 한 번 더 더블클릭 (이번엔 금방 끝나요)
 
