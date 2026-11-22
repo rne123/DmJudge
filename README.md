@@ -1,6 +1,7 @@
 # 디맥 판정 분석기 (DmJudge)
 
 **DJMAX RESPECT V**를 플레이하는 동안, 노트 하나하나를 **몇 ms 빨리/늦게 쳤는지** 실시간으로 보여주는 프로그램입니다.
+
 기반 자료: 갤러리 글 [「간단하게 판정 맞춰보는법」](https://gall.dcinside.com/mgallery/board/view/?id=djmaxrespect&no=2191967)
 
 - 기어 위에 반투명 **인디케이터**를 띄워서, 키를 누르는 순간 영점에서 얼마나 벗어났는지 바로 보여줍니다.
