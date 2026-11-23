@@ -9,6 +9,7 @@ dxcam(Desktop Duplication)으로 플레이 영역만 캡처한다.
 """
 from __future__ import annotations
 
+import math
 import time
 
 
@@ -138,6 +139,16 @@ def _region_and_geom(cfg):
     return (left, top, right, bottom), geom
 
 
+def indicator_size(o):
+    """(기본 높이, 실제 창 높이, 위로 늘린 만큼): 글자가 크면 창을 위로 늘리고 막대 줄은 그대로 둔다"""
+    from .ind_render import text_px
+    h0 = int(o["height"])
+    P = text_px(o)
+    h = max(h0, int(math.ceil((16 + 1.1 * P) / 0.62)) + 2)
+    up = int(round((h - h0) * 0.62))
+    return h0, h, up
+
+
 def indicator_rect(cfg):
     """인디케이터 창의 화면 위치 (x, y, w, h). 꺼져 있으면 None.
     드래그로 옮긴 적이 있으면 그 위치(x, y), 없으면 플레이 영역 기준 기본 위치."""
@@ -146,13 +157,13 @@ def indicator_rect(cfg):
     o = opts_of(cfg)
     if not g or not o["enabled"]:
         return None
-    h = int(o["height"])
+    h0, h, up = indicator_size(o)
     fw = g["x1"] - g["x0"]
     w = int(fw * max(0.2, min(1.5, float(o["width_frac"]))))
     if o.get("x") is not None and o.get("y") is not None:
-        cx = float(o["x"])                     # 저장된 값 = 막대 가운데 x, 위쪽 y
-        return int(cx - w / 2), int(o["y"]), w, h
-    y = int(g["judge_y"] - (g["judge_y"] - g["top"]) * float(o["y_frac"]) - h / 2)
+        cx = float(o["x"])                     # 저장된 값 = 막대 가운데 x, 위쪽 y (기본 글자 크기 기준)
+        return int(cx - w / 2), int(o["y"]) - up, w, h
+    y = int(g["judge_y"] - (g["judge_y"] - g["top"]) * float(o["y_frac"]) - h0 / 2) - up
     x = int(g["x0"] + (fw - w) / 2)
     return x, y, w, h
 

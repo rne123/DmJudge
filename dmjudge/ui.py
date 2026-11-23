@@ -544,6 +544,7 @@ class App(GraphDraw):
         self.var_iy = tk.IntVar(value=int(round(float(io.get("y_frac", 0.45)) * 100)))
         self.var_in = tk.DoubleVar(value=float(io.get("seconds", 3.0)))
         self.var_fl = tk.DoubleVar(value=float(io.get("flash_sec", 1.5)))
+        self.var_its = tk.IntVar(value=int(round(float(io.get("text_scale", 1.0)) * 100)))
         self.var_iw = tk.IntVar(value=int(round(float(io.get("width_frac", 0.7)) * 100)))
         self.btn_move = tk.Button(f3, text="인디케이터 이동", command=self.on_ind_move, bg="#262a35", fg=FG,
                                   activebackground="#343a48", activeforeground=FG, relief="flat",
@@ -552,7 +553,11 @@ class App(GraphDraw):
         f3.add(tk.Button(f3, text="위치 초기화", command=lambda: self.indicator and self.indicator.reset_position(),
                          bg="#262a35", fg=FG, activebackground="#343a48", activeforeground=FG, relief="flat",
                          font=(FONT, 9), padx=6), 2)
-        for txt, var, lo, hi, inc in (("표시 초", self.var_in, 0.5, 10, 0.5), ("ms 글자 초", self.var_fl, 0.3, 5, 0.1)):
+        f3.add(tk.Button(f3, text="폭 초기화", command=lambda: self.indicator and self.indicator.reset_width(),
+                         bg="#262a35", fg=FG, activebackground="#343a48", activeforeground=FG, relief="flat",
+                         font=(FONT, 9), padx=6), 2)
+        for txt, var, lo, hi, inc in (("표시 초", self.var_in, 0.5, 10, 0.5), ("ms 글자 초", self.var_fl, 0.3, 5, 0.1),
+                                      ("글자 크기 %", self.var_its, 50, 250, 10)):
             pf = tk.Frame(f3, bg=BG)
             self._lbl(pf, txt, 9).pack(side="left")
             sp = tk.Spinbox(pf, from_=lo, to=hi, increment=inc, width=4, textvariable=var,
@@ -568,6 +573,8 @@ class App(GraphDraw):
         fm, mm = modes_of(io)
         self.var_ibar = tk.IntVar(value=1 if io.get("bar", True) else 0)
         f3b.add(tk.Checkbutton(f3b, text="인디케이터 막대 표시", variable=self.var_ibar, command=self.on_indicator, **ck))
+        self.var_iswap = tk.IntVar(value=1 if io.get("swap_colors", False) else 0)
+        f3b.add(tk.Checkbutton(f3b, text="FAST/SLOW 색 반대로", variable=self.var_iswap, command=self.on_indicator, **ck))
         self.FS_LABELS = {"off": "표기 안 함", "fs": "FAST/SLOW 범위를 벗어났을 때", "win": "100% 범위를 벗어났을 때"}
         self.MS_LABELS = {"off": "표기 안 함", "all": "모든 노트 (FAST/SLOW 범위 밖은 색으로)",
                           "fs": "FAST/SLOW 범위를 벗어났을 때만", "win": "100% 범위를 벗어났을 때만"}
@@ -754,10 +761,13 @@ class App(GraphDraw):
                    "fs_mode": self._key_of(self.FS_LABELS, self.var_ifm.get(), "fs"),
                    "ms_mode": self._key_of(self.MS_LABELS, self.var_imm.get(), "off"),
                    "fade": self._key_of(self.FADE_LABELS, self.var_ifade.get(), "weak"),
-                   "text_fade": self._key_of(self.TFADE_LABELS, self.var_itfade.get(), "end")}
+                   "text_fade": self._key_of(self.TFADE_LABELS, self.var_itfade.get(), "end"),
+                   "text_scale": round(max(50, min(250, int(float(self.var_its.get())))) / 100.0, 2),
+                   "swap_colors": bool(self.var_iswap.get())}
         except (tk.TclError, ValueError):
             return
-        moved = new["enabled"] != io.get("enabled", True)
+        moved = (new["enabled"] != io.get("enabled", True)
+                 or abs(new["text_scale"] - float(io.get("text_scale", 1.0))) > 1e-6)   # 글자 크기 → 창 높이가 바뀜
         io.update(new)
         for k in ("fs_text", "ms_all", "fs_label_win"):      # 예전 방식 설정은 지움
             io.pop(k, None)
@@ -985,8 +995,12 @@ class App(GraphDraw):
         try:
             from .indicator import bar_range
             fs = self.ses.fs_range()
-            self.lbl_range.configure(text="막대 양끝 ±%.0f ms (FAST/SLOW 범위 ±%.1f에 맞춰 자동)" % (
-                bar_range(self.cfg, fs), fs))
+            if self.indicator is not None and self.indicator.moving:
+                self.lbl_range.configure(text="이동 중: 막대를 끌어서 옮기기 (기어 가운데 근처에서 자동으로 딱 맞춰짐) · "
+                                              "막대를 한 번 클릭한 뒤 방향키 1px, Shift+방향키 10px · 휠 = 폭")
+            else:
+                self.lbl_range.configure(text="막대 양끝 ±%.0f ms (FAST/SLOW 범위 ±%.1f에 맞춰 자동)" % (
+                    bar_range(self.cfg, fs), fs))
         except Exception:
             pass
         s = self.ses.stats()

@@ -50,6 +50,15 @@ class Session:
                 for k in ([keys] if isinstance(keys, str) else keys):
                     d[k] = ch
             self.key_to_ch[m] = d
+        self._game_keys = self._all_game_keys()
+
+    def _all_game_keys(self):
+        """모든 모드의 키 설정에 들어 있는 키 (게임에 쓰는 키). 이 밖의 키 입력은 기록하지 않는다."""
+        ks = set()
+        for mc in self.cfg.get("modes", {}).values():
+            for keys in mc.get("keymap", {}).values():
+                ks.update([keys] if isinstance(keys, str) else keys)
+        return ks
 
     def rebuild(self):
         cfg = self.cfg
@@ -65,6 +74,7 @@ class Session:
                 for k in keys:
                     d[k] = ch
             self.key_to_ch[m] = d
+        self._game_keys = self._all_game_keys()
         self.matchers = {m: self._new_matcher() for m in self.candidates}
         self.past = []              # 지난 곡들의 확정 기록: (t, mode, ch, e, conf)
         self.past_missed = defaultdict(int)
@@ -126,6 +136,8 @@ class Session:
 
     # ------------------------------------------------------------ 이벤트
     def on_key(self, kid, is_down, t):
+        if kid not in self._game_keys:
+            return      # 게임 키가 아니면 기록도 처리도 하지 않음 (채팅·비밀번호 등 다른 입력이 _raw.csv에 남지 않게)
         self.log("key", kid, int(bool(is_down)), round(t, 2))
         if self.paused:
             return

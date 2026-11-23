@@ -15,7 +15,7 @@ import numpy as np
 
 MARK = (63, 214, 200)      # 기본 선 (청록)
 OUT = (255, 120, 90)       # 범위 밖
-NEW = (255, 226, 110)      # 방금 친 노트
+NEW = (255, 236, 120)      # 방금 친 노트
 ZONE = (95, 211, 122)      # FAST/SLOW 범위 끝선
 AXIS = (150, 156, 168)
 
@@ -217,9 +217,30 @@ def ms_text(j):
     return "%+.1fms" % float(j)
 
 
-def text_y(H, bar):
-    """글자 줄 높이: 막대가 있으면 막대 위, 없으면 창 가운데"""
-    return int(round(H * 0.62)) - 21 if bar else H / 2.0
+FAST_COL = (90, 200, 255)     # 빠름 (파랑)
+SLOW_COL = (255, 110, 95)     # 느림 (빨강)
+
+
+def fs_color(kind, opts):
+    """FAST/SLOW 글자 색. opts["swap_colors"]면 반대로 (FAST 빨강 / SLOW 파랑 — 다른 게임에 익숙한 사람용)"""
+    fast = (kind == "fast")
+    if opts.get("swap_colors"):
+        fast = not fast
+    return FAST_COL if fast else SLOW_COL
+
+
+def text_px(opts, base=14):
+    """글자 크기(px): 기본 14px × 글자 크기 배율"""
+    try:
+        ts = float(opts.get("text_scale", 1.0))
+    except (TypeError, ValueError):
+        ts = 1.0
+    return max(7, int(round(base * max(0.5, min(2.5, ts)))))
+
+
+def text_y(H, bar, px=14):
+    """글자 줄 높이: 막대가 있으면 막대 위(글자가 클수록 더 위로), 없으면 창 가운데"""
+    return int(round(H * 0.62)) - 13 - 0.55 * px if bar else H / 2.0
 
 
 def render(W, H, vis, R, fs, win, flashes, opts, moving=False, fl_ms=450.0, last=None):
@@ -307,46 +328,64 @@ def render(W, H, vis, R, fs, win, flashes, opts, moving=False, fl_ms=450.0, last
             if am.max() > 0:
                 cv._over(slice(mid - 7, mid + 8), slice(0, W), col, np.broadcast_to(am[None, :], (15, W)))
         if n:
-            cv.vline(X(vis[-1][0]), mid - 9, mid + 10, NEW, min(1.0, 0.95 * k), 2.0)
+            # 방금 친 노트: 어두운 테두리 + 굵고 긴 밝은 선 + 위쪽 작은 점 (다른 선들 사이에서도 눈에 띄게)
+            xn = X(vis[-1][0])
+            cv.vline(xn, mid - 14, mid + 15, (0, 0, 0), 0.55, 5.0)
+            cv.vline(xn, mid - 13, mid + 14, NEW, 1.0, 3.0)
+            cv.rect(int(round(xn - 2.5)), int(round(xn + 2.5)), mid - 17, mid - 12, NEW, 1.0)
         # 정중앙
         cv.vline(X(0), mid - 11, mid + 12, (255, 255, 255), min(1.0, 0.9 * k), 2.5)
+
+    P = text_px(opts)                  # 글자 크기
+    TY = text_y(H, bar, P)
+    XC = X(0) if bar else W / 2.0      # 중앙선: 글자가 넘어가지 않게 왼쪽/오른쪽에 나눠 둔다
+    M = 6                              # 중앙선과 글자 사이 여백
+
+    def fit(samples, room):
+        """samples 글자들이 모두 room(px) 안에 들어가는 가장 큰 크기 (최대 P)"""
+        p = P
+        while p > 7:
+            w = max(text_mask(t, p).shape[1] for t in samples)
+            if w <= room:
+                break
+            p = max(7, min(p - 1, int(p * room / w)))
+        return p
 
     for fl in flashes:
         kind, age = fl[0], fl[1]
         jv = fl[2] if len(fl) > 2 else None
         f = age / fl_ms
         txt = fl[4] if len(fl) > 4 else flash_text(kind, jv)
-        tw = text_mask(txt, 14).shape[1]
         side = fl[3] if len(fl) > 3 else ("L" if kind == "fast" else "R")   # 왼손 → 왼쪽, 오른손 → 오른쪽
-        col = (90, 200, 255) if kind == "fast" else (255, 110, 95)
-        x = X(-R * 0.55) if side == "L" else X(R * 0.55)
-        x = min(max(x, tw / 2 + 2), W - tw / 2 - 2)        # 글자가 길어져도 막대 밖으로 안 잘리게
+        col = fs_color(kind, opts)
+        if side == "L":
+            p = fit([txt], XC - M - 2)
+            tw = text_mask(txt, p).shape[1]
+            x = min(max(X(-R * 0.55), 2 + tw / 2), XC - M - tw / 2)
+        else:
+            p = fit([txt], W - 2 - (XC + M))
+            tw = text_mask(txt, p).shape[1]
+            x = max(min(X(R * 0.55), W - 2 - tw / 2), XC + M + tw / 2)
         a = text_alpha(f, opts.get("text_fade", "end"))
-        cv.text(txt, x, text_y(H, bar), 14, col, a)
+        cv.text(txt, x, TY, p, col, a)
     if last is not None:                          # 모든 노트 ms (다음 노트가 오면 바뀜)
         j, age, lab = last[0], last[1], (last[2] if len(last) > 2 else None)
         f = age / fl_ms
         a = text_alpha(f, opts.get("text_fade", "end"))
         if a > 0:
             out = abs(j) > fs
-            col = ((90, 200, 255) if j < 0 else (255, 110, 95)) if out else (255, 255, 255)
+            col = fs_color("fast" if j < 0 else "slow", opts) if out else (255, 255, 255)
             txt = ms_text(j)
-            cx = X(0) if bar else W / 2.0
-            ty = text_y(H, bar)
-            tw = text_mask(txt, 14).shape[1]
-            gap = 44                                   # 숫자 가운데 ~ FAST/SLOW 오른쪽 끝 (고정: 숫자가 바뀌어도 안 흔들림)
-            if lab:
-                lw = text_mask(lab.upper(), 14).shape[1]
-                cx = min(max(cx, lw + gap + 2), W - tw / 2 - 2)
-                lc = (90, 200, 255) if lab == "fast" else (255, 110, 95)
+            # 크기는 가장 긴 경우 기준으로 정해서 숫자가 바뀌어도 크기가 흔들리지 않게
+            p = min(fit(["-188.8ms"], W - 2 - (XC + M)), fit(["FAST", "SLOW"], XC - M - 2))
+            if lab:                               # FAST/SLOW = 중앙선 왼쪽 (오른쪽 끝 고정)
+                lc = fs_color(lab, opts)
                 la = a
                 if len(last) > 3 and last[3] is not None:     # 글자는 자기가 뜬 시각 기준으로 흐려짐
                     lf = last[3] / fl_ms
                     la = text_alpha(lf, opts.get("text_fade", "end"))
-                cv.text(lab.upper(), cx - gap, ty, 14, lc, la, anchor="e")
-            else:
-                cx = min(max(cx, tw / 2 + 2), W - tw / 2 - 2)
-            cv.text(txt, cx, ty, 14, col, a)
+                cv.text(lab.upper(), XC - M, TY, p, lc, la, anchor="e")
+            cv.text(txt, XC + M, TY, p, col, a, anchor="w")    # 숫자 = 중앙선 오른쪽 (왼쪽 끝 고정)
     if n and bar:
         avg = sum(j for j, _ in vis) / n
         cv.tri(X(avg), mid + 12, 4.5, 6, (200, 205, 214), 0.85 * k)

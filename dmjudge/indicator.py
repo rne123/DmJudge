@@ -112,7 +112,7 @@ def _mix(c, f):
 DEFAULTS = {"enabled": True, "y_frac": 0.45, "zone_frac": 0.416, "seconds": 3.0,
             "width_frac": 0.45, "height": 58, "x": None, "y": None,
             "render": "alpha", "strength": 1.0, "density": True, "bg_alpha": 0.0,
-            "flash_sec": 1.5,
+            "flash_sec": 1.5, "text_scale": 1.0, "swap_colors": False,
             "bar": True}   # 막대 / FAST·SLOW 글자 / 모든 노트 ms
 
 
@@ -205,6 +205,9 @@ class Indicator:
         self.cv.bind("<B1-Motion>", self._drag)
         self.cv.bind("<ButtonRelease-1>", self._release)
         self.cv.bind("<MouseWheel>", self._wheel)
+        for k in ("Left", "Right", "Up", "Down"):
+            self.cv.bind("<%s>" % k, self._nudge)
+            self.cv.bind("<Shift-%s>" % k, self._nudge)
         return True
 
     def _hwnd(self):
@@ -253,21 +256,60 @@ class Indicator:
         if not on and self.on_moved:
             self.on_moved()
 
+    def _lift(self):
+        """글자가 커서 창을 위로 늘린 만큼 (저장 위치는 기본 글자 크기 기준)"""
+        from .capture import indicator_size
+        return indicator_size(opts_of(self.cfg))[2]
+
+    SNAP_PX = 24     # 막대 가운데가 기어 가운데에서 이만큼 안쪽이면 딱 붙인다
+
+    def _snap_x(self, nx):
+        """막대 가운데가 기어(플레이 영역) 가운데 근처면 정확히 가운데로"""
+        g = self.cfg.get("geometry")
+        if not g:
+            return nx
+        gx = (g["x0"] + g["x1"]) / 2.0
+        if abs(nx + self.w / 2.0 - gx) <= self.SNAP_PX:
+            return int(round(gx - self.w / 2.0))
+        return nx
+
     def _press(self, ev):
         if self.moving:
             self._drag0 = (ev.x_root, ev.y_root, self.top.winfo_x(), self.top.winfo_y())
+            try:
+                self.cv.focus_force()          # 방향키로 미세 조정할 수 있게
+            except Exception:
+                pass
 
     def _drag(self, ev):
         if self.moving and getattr(self, "_drag0", None):
             x0r, y0r, wx, wy = self._drag0
             nx, ny = wx + ev.x_root - x0r, wy + ev.y_root - y0r
-            self.top.geometry("+%d+%d" % (nx, ny))
+            self.top.geometry("+%d+%d" % (self._snap_x(nx), ny))
+
+    def _nudge(self, ev):
+        """이동 모드에서 방향키: 1px, Shift+방향키: 10px"""
+        if not self.moving or self.top is None:
+            return
+        step = 10 if (ev.state & 0x0001) else 1
+        dx = {"Left": -step, "Right": step}.get(ev.keysym, 0)
+        dy = {"Up": -step, "Down": step}.get(ev.keysym, 0)
+        nx, ny = self.top.winfo_x() + dx, self.top.winfo_y() + dy
+        self.top.geometry("+%d+%d" % (nx, ny))
+        io = self.cfg.setdefault("indicator", {})
+        io["x"] = nx + self.w / 2.0
+        io["y"] = ny + self._lift()
+        from .capture import indicator_rect
+        self._last_key = indicator_rect(self.cfg)   # 창을 새로 만들지 않고 그대로 (포커스 유지)
+        if self.on_save:
+            self.on_save()
+        return "break"
 
     def _release(self, ev):
         if self.moving and getattr(self, "_drag0", None):
             io = self.cfg.setdefault("indicator", {})
             io["x"] = self.top.winfo_x() + self.w / 2.0
-            io["y"] = self.top.winfo_y()
+            io["y"] = self.top.winfo_y() + self._lift()
             self._drag0 = None
             self._last_key = None            # 새 위치로 다시 만든다
             if self.on_save:
@@ -280,11 +322,22 @@ class Indicator:
         o = opts_of(self.cfg)
         if io.get("x") is None:              # 기본 위치였다면 현재 위치를 고정값으로 저장
             io["x"] = self.top.winfo_x() + self.w / 2.0
-            io["y"] = self.top.winfo_y()
+            io["y"] = self.top.winfo_y() + self._lift()
         io["width_frac"] = round(max(0.2, min(1.5, float(o["width_frac"]) + (0.05 if ev.delta > 0 else -0.05))), 2)
         self.update(force=True)
         if self.on_save:
             self.on_save()
+
+    def reset_width(self):
+        """막대 폭을 기본값으로 (가운데 위치는 그대로)"""
+        from .config import DEFAULTS
+        io = self.cfg.setdefault("indicator", {})
+        io["width_frac"] = DEFAULTS["indicator"]["width_frac"]
+        self.update(force=True)
+        if self.on_save:
+            self.on_save()
+        if self.on_moved:
+            self.on_moved()
 
     def reset_position(self):
         io = self.cfg.setdefault("indicator", {})
@@ -386,7 +439,8 @@ class Indicator:
             fl = []                     # 모든 노트 ms 모드에서는 FAST/SLOW를 가운데 숫자 옆에 붙여 보여줌
         # 새 노트가 찍혔는지만 비교 (경과 시간은 넣지 않음 → 흐려지는 효과는 33ms마다만 다시 그림)
         sig = (len(vis), newest_t, vis[-1][0] if vis else None, len(fl), js, win, fs, o["zone_frac"], o["seconds"],
-               last[0] if last else None, last[2] if last else None, o.get("bar", True), fm, mm, o.get("fade", "weak"), o.get("text_fade", "end"))
+               last[0] if last else None, last[2] if last else None, o.get("bar", True), fm, mm, o.get("fade", "weak"), o.get("text_fade", "end"),
+               o.get("text_scale", 1.0), o.get("swap_colors", False))
         # 점이 있으면 흐려지는 효과 때문에 계속 다시 그린다 (없을 때는 한 번만)
         busy = bool(vis) or bool(fl) or self._flash_on or last is not None
         if not force and not self.moving and sig == self._last_sig and (not busy or now - self._last_draw < 33):
@@ -453,33 +507,40 @@ class Indicator:
                 newest = k == n - 1
                 c = NEW if newest else (OUT if abs(j) > fs else MARK)
                 from .ind_render import line_alpha
-                hh = 9 if newest else max(2, int(round(8 * line_alpha(age, span, o.get("fade", "weak")) / 0.85)))
-                cv.create_line(X(j), mid - hh, X(j), mid + hh, fill=_mix(c, 0), width=2 if newest else 1)
+                hh = 13 if newest else max(2, int(round(8 * line_alpha(age, span, o.get("fade", "weak")) / 0.85)))
+                cv.create_line(X(j), mid - hh, X(j), mid + hh, fill=_mix(c, 0), width=3 if newest else 1)
             # 정중앙 (두꺼운 흰 선)
             cv.create_line(X(0), mid - 11, X(0), mid + 11, fill="#ffffff", width=3)
         # EARLY / LATE 글자: 범위 밖으로 쳤을 때만, 막대 위 투명 배경으로 잠깐
-        from .ind_render import flash_text, ms_text
-        ty = mid - 21 if bar else H / 2
+        from .ind_render import flash_text, ms_text, text_px, text_y
+        P = text_px(o)
+        FP = max(7, int(round(11 * P / 14.0)))     # tk 글꼴 크기(pt)
+        ty = text_y(H, bar, P)
+        xc = X(0) if bar else W / 2
         for kind, age, jv, side, txt in fl:
             f = age / FL
-            col = (90, 200, 255) if kind == "fast" else (255, 110, 95)
-            x = max(W * 0.22, X(-R * 0.55)) if side == "L" else min(W * 0.78, X(R * 0.55))
+            from .ind_render import fs_color
+            col = fs_color(kind, o)
             from .ind_render import text_alpha
             fade = 1.0 - text_alpha(f, o.get("text_fade", "end"))
-            cv.create_text(x, ty, text=txt, fill=_mix(col, fade), font=(FONT, 11, "bold"))
-        if last is not None:            # 모든 노트 ms
+            if side == "L":     # 중앙선을 넘지 않게: 왼쪽 글자는 오른쪽 끝을 중앙선 왼쪽에
+                cv.create_text(min(X(-R * 0.55), xc - 6), ty, text=txt, fill=_mix(col, fade),
+                               font=(FONT, FP, "bold"), anchor="e")
+            else:
+                cv.create_text(max(X(R * 0.55), xc + 6), ty, text=txt, fill=_mix(col, fade),
+                               font=(FONT, FP, "bold"), anchor="w")
+        if last is not None:            # 모든 노트 ms: FAST/SLOW는 중앙선 왼쪽, 숫자는 오른쪽
             j, age, lab = last[0], last[1], last[2]
             f = age / FL
-            from .ind_render import text_alpha
+            from .ind_render import text_alpha, fs_color
             fade = 1.0 - text_alpha(f, o.get("text_fade", "end"))
             out = abs(j) > fs
-            col = ((90, 200, 255) if j < 0 else (255, 110, 95)) if out else (255, 255, 255)
-            cx = X(0) if bar else W / 2
-            cv.create_text(cx, ty, text=ms_text(j), fill=_mix(col, fade), font=(FONT, 11, "bold"))
+            col = fs_color("fast" if j < 0 else "slow", o) if out else (255, 255, 255)
+            cv.create_text(xc + 6, ty, text=ms_text(j), fill=_mix(col, fade), font=(FONT, FP, "bold"), anchor="w")
             if lab:
-                lc = (90, 200, 255) if lab == "fast" else (255, 110, 95)
-                cv.create_text(cx - 44, ty, text=lab.upper(), fill=_mix(lc, fade),
-                               font=(FONT, 11, "bold"), anchor="e")
+                lc = fs_color(lab, o)
+                cv.create_text(xc - 6, ty, text=lab.upper(), fill=_mix(lc, fade),
+                               font=(FONT, FP, "bold"), anchor="e")
         if n and bar:
             avg = sum(j for j, _ in vis) / n
             xa = X(avg)
