@@ -70,7 +70,7 @@ DEFAULTS = {
     "record_save": False,        # [기록 저장]: 곡이 끝나면 결과 화면 PNG + 그 곡 _raw.csv를 자동 저장
     "record_dir": "",            # 비우면 프로그램 폴더의 '기록' 폴더
     "measure": "eye",            # eye(눈판정) / ear(귀판정)
-    "ui": {"alpha": 0.92, "geometry": ""},
+    "ui": {"alpha": 0.92, "geometry": "", "topmost": True},
     "indicator": {               # 기어 위 EARLY/LATE 인디케이터
         "enabled": True,
         "y_frac": 0.45,          # 판정선에서 위로 플레이 영역 높이의 몇 % 지점
@@ -81,6 +81,45 @@ DEFAULTS = {
         "style_v": 2,
     },
 }
+
+
+GEAR_POS = ("왼쪽", "가운데", "오른쪽")
+
+
+def switch_gear_pos(cfg, new):
+    """기어 위치(왼쪽·가운데·오른쪽)를 바꾼다: 지금 영역 보정을 그 위치 몫으로 저장하고, 새 위치에 저장된 것을 불러온다.
+    새 위치를 보정한 적이 없으면 지금 영역을 화면 폭의 1/3만큼 옆으로 옮겨 쓴다
+    (1080p에서 기어 가운데 x 710~1211 → 왼쪽 70~571 / 오른쪽 1350~1851, 화면 폭 = 가운데 기어 x0 + x1).
+    인디케이터를 끌어서 옮겨 둔 위치도 같은 만큼 옮긴다. 반환: 옮긴 거리(px)"""
+    old = cfg.get("gear_pos") or "가운데"
+    if new == old or new not in GEAR_POS:
+        return 0
+    g = cfg.get("geometry")
+    by = cfg.setdefault("geometry_by_pos", {})
+    if g:
+        by[old] = dict(g)
+    cfg["gear_pos"] = new
+    if not g:
+        return 0
+    if by.get(new):
+        ng = dict(by[new])
+    else:
+        c = by.get("가운데")
+        if c:
+            W = float(c["x0"]) + float(c["x1"])
+        else:                                    # 가운데를 보정한 적 없으면 지금 영역에서 거꾸로 계산
+            W = (float(g["x0"]) + float(g["x1"])) / (1 + 2 * (GEAR_POS.index(old) - 1) / 3.0)
+        base = c or g
+        k = GEAR_POS.index(new) - (1 if c else GEAR_POS.index(old))
+        ng = dict(base)
+        ng["x0"] = round(float(base["x0"]) + k * W / 3.0, 2)
+        ng["x1"] = round(float(base["x1"]) + k * W / 3.0, 2)
+    dx = (float(ng["x0"]) + float(ng["x1"]) - float(g["x0"]) - float(g["x1"])) / 2.0
+    cfg["geometry"] = ng
+    io = cfg.get("indicator") or {}
+    if io.get("x") is not None:
+        io["x"] = round(float(io["x"]) + dx, 1)
+    return dx
 
 
 def app_dir():
